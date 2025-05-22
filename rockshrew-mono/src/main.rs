@@ -6,7 +6,7 @@ use clap::Parser;
 use env_logger;
 use hex;
 // Removed unused import
-use log::{debug, info, error};
+use log::{debug, info, error, warn};
 use metashrew_runtime::KeyValueStoreLike;
 use metashrew_runtime::MetashrewRuntime;
 use num_cpus;
@@ -515,20 +515,39 @@ impl MetashrewRocksDBSync {
         let mut best: u32 = block_number;
         let count = self.fetch_blockcount().await?;
         
+        // Only perform deep reorg check if we are near the tip or at the start.
         if best >= count - std::cmp::min(6, count) {
             loop {
                 if best == 0 {
-                    break;
+                    break; // Reached genesis, or an error occurred deeper than we check
                 }
-                let blockhash = self
-                    .get_blockhash(best)
-                    .await
-                    .ok_or(anyhow!("failed to retrieve blockhash"))?;
-                let remote_blockhash = self.fetch_blockhash(best).await?;
-                if blockhash == remote_blockhash {
-                    break;
-                } else {
-                    best = best - 1;
+
+                match self.get_blockhash(best).await {
+                    Some(local_blockhash) => {
+                        let remote_blockhash = self.fetch_blockhash(best).await?;
+                        if local_blockhash == remote_blockhash {
+                            break; // Found a common ancestor or confirmed current block
+                        } else {
+                            info!("Local blockhash mismatch at height {}, walking back for reorg check.", best);
+                            best -= 1;
+                        }
+                    }
+                    None => {
+                        // If local blockhash is None:
+                        // - If 'best' is the original 'block_number' we are trying to sync to, it's expected not to be local yet.
+                        //   In this case, we trust this 'best' height and will attempt to fetch it.
+                        // - If 'best' is less than 'block_number', it means we are walking back during a reorg check
+                        //   and encountered a missing block that should have been there. This is an error.
+                        if best < block_number {
+                            error!("Missing local blockhash for past block {} during reorg check when original target was {}.", best, block_number);
+                            return Err(anyhow!("failed to retrieve blockhash for past block {} during reorg check", best));
+                        } else {
+                            // This is the block_number we are trying to sync up to. It's fine that it's not local yet.
+                            // We'll proceed to fetch it based on the remote daemon.
+                            debug!("Local blockhash for target height {} not found (expected for new block), proceeding with daemon version.", best);
+                            break; 
+                        }
+                    }
                 }
             }
         }
@@ -1223,6 +1242,31 @@ async fn main() -> Result<()> {
     // Removed deprecated call to set_max_background_compactions
     opts.set_disable_auto_compactions(false);
     
+    // Log the current height from the database before starting full init
+    match rocksdb::DB::open_for_read_only(&opts, args.db_path.to_string_lossy().to_string(), false) {
+        Ok(db) => {
+            match db.get(b"/__INTERNAL/height") {
+                Ok(Some(value)) => {
+                    if value.len() == 4 {
+                        let height = u32::from_be_bytes(value.try_into().unwrap());
+                        info!("Successfully read current height from DB: {}", height);
+                    } else {
+                        warn!("Height key found in DB but value is not a valid u32 (unexpected length: {}).", value.len());
+                    }
+                }
+                Ok(None) => {
+                    info!("No current height key found in DB. This might be a fresh database.");
+                }
+                Err(e) => {
+                    warn!("Failed to read height from DB: {}. This might be a fresh database or a DB issue.", e);
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Failed to open DB for reading current height: {}. Assuming fresh database or will be created by indexer.", e);
+        }
+    }
+
     let start_block = args.start_block.unwrap_or(0);
     
     // Create runtime with RocksDB adapter
