@@ -74,6 +74,8 @@ struct Args {
     pipeline_size: Option<usize>,
     #[arg(long, help = "CORS allowed origins (e.g., '*' for all origins, or specific domains)")]
     cors: Option<String>,
+    #[arg(long, help = "Memory refresh threshold in GB (e.g., 16.0 for 16GB)", default_value = "16.0")]
+    memory_refresh_threshold_gb: f64,
 }
 
 #[derive(Clone)]
@@ -764,8 +766,8 @@ impl MetashrewRocksDBSync {
             // Get the memory size in bytes
             let memory_size = memory.data_size(&mut runtime.wasmstore);
             
-            // 1.75GB in bytes = 1.75 * 1024 * 1024 * 1024
-            let threshold_gb = 1.75;
+            // Use the configured threshold
+            let threshold_gb = self.args.memory_refresh_threshold_gb;
             let threshold_bytes = (threshold_gb * 1024.0 * 1024.0 * 1024.0) as usize;
             
             // Get detailed memory stats for logging
