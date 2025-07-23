@@ -957,7 +957,7 @@ async fn handle_jsonrpc(
 
         // Use await with the async view function
         match runtime.view(
-            view_name,
+            view_name.clone(),
             &input_data,
             height,
         ).await {
@@ -1089,7 +1089,7 @@ async fn handle_jsonrpc(
         
         match runtime.preview_async(
           &block_data,
-          view_name,
+          view_name.clone(),
           &input_data,
           height,
       ).await {
