@@ -270,12 +270,16 @@ match context.runtime.view(
                 Ok(HttpResponse::Ok().json(result))
             }
             Err(err) => {
+                // Log the full error chain for observability
+                log::error!("View '{}' failed: {:?}", view_name, err);
+
                 let error = JsonRpcError {
                     id: body.id,
                     error: JsonRpcErrorObject {
                         code: -32000,
                         message: err.to_string(),
-                        data: None,
+                        // Include the debug chain as data for easier debugging
+                        data: Some(format!("{:?}", err)),
                     },
                     jsonrpc: "2.0".to_string(),
                 };
@@ -434,12 +438,16 @@ match context.runtime.view(
                 Ok(HttpResponse::Ok().json(result))
             }
             Err(err) => {
+                // Log the full error chain for observability
+                log::error!("View '{}' failed: {:?}", view_name, err);
+
                 let error = JsonRpcError {
                     id: body.id,
                     error: JsonRpcErrorObject {
                         code: -32000,
                         message: err.to_string(),
-                        data: None,
+                        // Include the debug chain as data for easier debugging
+                        data: Some(format!("{:?}", err)),
                     },
                     jsonrpc: "2.0".to_string(),
                 };
