@@ -971,7 +971,11 @@ async fn handle_jsonrpc(
                 error: JsonRpcErrorObject {
                     code: -32000,
                     message: err.to_string(),
-                    data: None,
+                    // Log the full error chain for observability
+                    data: {
+                        log::error!("View '{}' failed: {:?}", view_name, err);
+                        Some(format!("{:?}", err))
+                    },
                 },
                 jsonrpc: "2.0".to_string(),
             })),
@@ -1099,7 +1103,11 @@ async fn handle_jsonrpc(
                 error: JsonRpcErrorObject {
                     code: -32000,
                     message: err.to_string(),
-                    data: None,
+                    // Log the full error chain for observability  
+                    data: {
+                        log::error!("Preview '{}' failed: {:?}", view_name, err);
+                        Some(format!("{:?}", err))
+                    },
                 },
                 jsonrpc: "2.0".to_string(),
             })),
